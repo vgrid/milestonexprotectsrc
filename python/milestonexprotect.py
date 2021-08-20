@@ -248,4 +248,4 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
       print ("returning")
       return Gst.FlowReturn.ERROR
 
-__gstelementfactory__ = ("milestonesprotectsrc", Gst.Rank.NONE, MilestoneXprotectSrc)
+__gstelementfactory__ = ("milestonexprotectsrc", Gst.Rank.NONE, MilestoneXprotectSrc)
