@@ -178,8 +178,7 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
 
       recorder_result = urlparse(recorder_url)
 
-      # self.recorder_host = recorder_result.hostname
-      self.recorder_host = "100.112.59.26"
+      self.recorder_host = recorder_result.hostname
       self.recorder_port = recorder_result.port
 
       self.socket = socket()

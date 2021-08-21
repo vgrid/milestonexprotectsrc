@@ -126,11 +126,6 @@ GST_STATIC_PAD_TEMPLATE(
   GST_STATIC_CAPS ("image/jpeg")
 );
 
-// static GstStaticPadTemplate src_metadata_factory = GST_STATIC_PAD_TEMPLATE("src_metadata",
-//   GST_PAD_SRC,
-//   GST_PAD_ALWAYS,
-//   GST_STATIC_CAPS("ANY")
-// );
 
 #define gst_fromxprotectconverter_parent_class parent_class
 G_DEFINE_TYPE(GstFromXprotectConverter, gst_fromxprotectconverter, GST_TYPE_BIN);
