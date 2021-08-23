@@ -169,7 +169,7 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
       recorder_url = None
       for recorder in config.Recorders.RecorderInfo:
         for camera in recorder.Cameras.CameraInfo:
-          if camera.DeviceId == self.camera_id:
+          if camera.DeviceId.lower() == self.camera_id.lower():
             recorder_url = recorder.WebServerUri
             break
 
