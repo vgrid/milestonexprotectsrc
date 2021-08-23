@@ -20,4 +20,4 @@ By default, this will install the elements into `/usr/lib/gstreamer-1.0`. Python
 
 Example launch line:
 
-`gst-launch-1.0 milestonexprotectsrc user-domain=DOMAIN user-id=user user-pw=password camera-id=173cb77c-4883-4519-ae94-48a8e574afe9 ! fromxprotectconverter ! fakesink`
+`gst-launch-1.0 milestonexprotectsrc management-server=10.1.1.1 user-domain=DOMAIN user-id=user user-pw=password camera-id=173cb77c-4883-4519-ae94-48a8e574afe9 ! fromxprotectconverter ! fakesink`
