@@ -5,6 +5,7 @@ from requests_ntlm import HttpNtlmAuth
 from socket import *
 from urllib.parse import urlparse
 import uuid
+import urllib3
 import xml.etree.ElementTree as ET
 from zeep import Client
 from zeep.transports import Transport
@@ -178,22 +179,24 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
             raise AttributeError('unknown property %s' % prop.name)
 
     def do_start (self):
-      url = self.management_server + "/ManagementServer/ServerCommandService.svc"
-      
       session = Session()
       if self.user_domain == "BASIC":
-        url = "https://" + url
+        url = "https://" + self.management_server + "/ManagementServer/ServerCommandService.svc"
         session.auth = auth.HTTPBasicAuth(username=self.user_id, password=self.user_pw)
         session.verify = False # Highly unlikely we'll trust the Milestone cert, so just ignore errors
+        urllib3.disable_warnings()
+        binding_override_namespace = "{http://tempuri.org/}BasicHttpBinding_IServerCommandService"
       else:
-        url = "http://" + url
+        # TODO: This endpoint is marked as deprecated, but testing against a 2020R3 release doesn't work with the new endpoint?
+        url = "http://" + self.management_server + "/ServerAPI/ServerCommandService.asmx"
         session.auth = HttpNtlmAuth(self.user_domain + "\\" + self.user_id, self.user_pw)
+        binding_override_namespace = "{http://videoos.net/2/XProtectCSServerCommand}ServerCommandServiceSoap"
 
       self.client = Client(url + "?wsdl", transport=Transport(session=session))
       self.instance_id = str(uuid.uuid4())
 
       if self.force_management_address:
-        self.service = self.client.create_service("{http://tempuri.org/}BasicHttpBinding_IServerCommandService", url)
+        self.service = self.client.create_service(binding_override_namespace, url)
       else:
         self.service = self.client.service
       
