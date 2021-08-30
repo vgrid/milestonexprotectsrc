@@ -1,6 +1,6 @@
 from datetime import timedelta
 import gi
-from requests import Session
+from requests import auth, Session
 from requests_ntlm import HttpNtlmAuth
 from socket import *
 from urllib.parse import urlparse
@@ -45,8 +45,16 @@ class Buffer:
     buf,sep,self.buffer = self.buffer.partition(b'\r\n\r\n')
     return buf
 
-def generate_connect_xml(token, camera_id):
-  connect = """<?xml version="1.0" encoding="UTF-8"?>
+class XmlGenerator:
+  def __init__(self, token, camera_id):
+    self._request_id = 1
+
+    self._camera_id = camera_id
+    self._token = token
+
+  def connect(self):
+    self._request_id += 1
+    return """<?xml version="1.0" encoding="UTF-8"?>
 <methodcall>
 <requestid>{request_id}</requestid>
 <methodname>connect</methodname>
@@ -55,20 +63,25 @@ def generate_connect_xml(token, camera_id):
 <cameraid>a</cameraid>
 <alwaysstdjpeg>no</alwaysstdjpeg>
 <connectparam>id={camera_id}&amp;connectiontoken={token}</connectparam>
-</methodcall>"""
-  connect = connect.format(request_id="1", camera_id=camera_id, token=token)
+</methodcall>""".format(request_id=str(self._request_id), camera_id=self._camera_id, token=self._token).replace("\n", "")
 
-  return connect.replace("\n", "")
+  def connect_update(self):
+    self._request_id += 1
+    return """<?xml version="1.0" encoding="UTF-8"?>
+<methodcall>
+<requestid>{request_id}</requestid>
+<methodname>connectupdate</methodname>
+<connectparam>id={camera_id}&amp;connectiontoken={token}</connectparam>
+</methodcall>""".format(request_id=str(self._request_id), camera_id=self._camera_id, token=self._token).replace("\n", "")
 
-def generate_live_xml():
-  goto = """<?xml version="1.0" encoding="UTF-8"?>
+  def live(self):
+    self._request_id += 1
+    return """<?xml version="1.0" encoding="UTF-8"?>
 <methodcall>
 <requestid>{request_id}</requestid>
 <methodname>live</methodname>
-</methodcall>"""
-  goto = goto.format(request_id="2")
+</methodcall>""".format(request_id=str(self._request_id)).replace("\n", "")
 
-  return goto.replace("\n", "")
 
 class MilestoneXprotectSrc(GstBase.BaseSrc):
     __gstmetadata__ = ('MilestoneXprotectSrc','Src', \
@@ -83,7 +96,7 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
                 ),
         "user-domain": (str,
                  "Domain",
-                 "Domain to use to log in",
+                 "Domain to use to log in - if domain is set to BASIC, basic authentication against Milestone will be used",
                  "",
                  GObject.ParamFlags.READWRITE
                 ),
@@ -153,17 +166,23 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
             raise AttributeError('unknown property %s' % prop.name)
 
     def do_start (self):
-      url = "http://" + self.management_server + "/ServerAPI/ServerCommandService.asmx?wsdl"
+      url = self.management_server + "/ManagementServer/ServerCommandService.svc?wsdl"
       
       session = Session()
-      session.auth = HttpNtlmAuth(self.user_domain + "\\" + self.user_id, self.user_pw)
+      if self.user_domain == "BASIC":
+        url = "https://" + url
+        session.auth = auth.HTTPBasicAuth(username=self.user_id, password=self.user_pw)
+        session.verify = False # Highly unlikely we'll trust the Milestone cert, so just ignore errors
+      else:
+        url = "http://" + url
+        session.auth = HttpNtlmAuth(self.user_domain + "\\" + self.user_id, self.user_pw)
+
       self.client = Client(url, transport=Transport(session=session))
       self.instance_id = str(uuid.uuid4())
       
       login = self.client.service.Login(instanceId=self.instance_id)
       self.login_token = login.Token
       self.renew_time = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
-      print(self.renew_time)
 
       config = self.client.service.GetConfiguration(token=login.Token)
       recorder_url = None
@@ -185,9 +204,10 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
       self.socket.connect((self.recorder_host, self.recorder_port))
 
       self.buffer = Buffer(self.socket)
+      self.xmlGenerator = XmlGenerator(self.login_token, self.camera_id)
       
       # Send the initial connect to make sure we're good to go
-      self.socket.sendall(bytes(generate_connect_xml(self.login_token, self.camera_id), 'UTF-8'))
+      self.socket.sendall(bytes(self.xmlGenerator.connect(), 'UTF-8'))
       self.socket.sendall(b'\r\n\r\n')
 
       response = self.buffer.get_line()
@@ -198,16 +218,18 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
 
       return True
 
-    # TODO: Implement the renewal logic
-    # def renew_token(self):
-    #   login = self.client.service.Login(instanceId=self.instance_id, currentToken=self.login_token)
-    #   self.login_token = login.Token
-    #   self.renew_time = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
+    # TODO: Do renewal logic
+    def renew_token(self):
+      login = self.client.service.Login(instanceId=self.instance_id, currentToken=self.login_token)
+      self.login_token = login.Token
+      self.renew_time = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
+      self.socket.sendall(bytes(self.xmlGenerator.connect_update(), 'UTF-8'))
+      self.socket.sendall(b'\r\n\r\n')
 
     # This method is called by gstreamer to create a buffer
     def do_create(self, o, s):
       if self.started == False:
-        self.socket.sendall(bytes(generate_live_xml(), 'UTF-8'))
+        self.socket.sendall(bytes(self.xmlGenerator.live(), 'UTF-8'))
         self.socket.sendall(b'\r\n\r\n')
         self.started = True
 
@@ -228,7 +250,7 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
             return (Gst.FlowReturn.OK, buf)
 
           elif response.startswith("<?xml"):
-            print (response)
+            continue
 
           else:
             if response == "":
