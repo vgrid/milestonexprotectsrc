@@ -118,6 +118,13 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
                  "",
                  GObject.ParamFlags.READWRITE
                 ),
+        "force-management-address": (bool,
+                 "Force Management Address",
+                 """Forces the SOAP login process to use the managment server supplied in the management-server property, rather than the one returned in the WSDL.
+This can help when servers return a different hostname (i.e DNS instead of an IP) in the response, rather than the value you supply""",
+                 False,
+                 GObject.ParamFlags.READWRITE
+                ),
     }
 
     __gsttemplates__ = Gst.PadTemplate.new("src",
@@ -128,11 +135,12 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
     def __init__(self):
         GstBase.BaseSrc.__init__(self)
 
-        self.management_server = ""
-        self.user_domain = ""
-        self.user_id = ""
-        self.user_pw = ""
-        self.camera_id = ""
+        self.management_server: str = ""
+        self.user_domain: str = ""
+        self.user_id: str = ""
+        self.user_pw: str = ""
+        self.camera_id: str = ""
+        self.force_management_address: bool = False
 
         self.set_live(True)
         self.started = False
@@ -148,6 +156,8 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
             return self.user_pw
         elif prop.name == 'camera-id':
             return self.camera_id
+        elif prop.name == 'force-management-address':
+            return self.force_management_address
         else:
             raise AttributeError('unknown property %s' % prop.name)
 
@@ -162,11 +172,13 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
             self.user_pw = value
         elif prop.name == 'camera-id':
             self.camera_id = value
+        elif prop.name == 'force-management-address':
+            self.force_management_address = value
         else:
             raise AttributeError('unknown property %s' % prop.name)
 
     def do_start (self):
-      url = self.management_server + "/ManagementServer/ServerCommandService.svc?wsdl"
+      url = self.management_server + "/ManagementServer/ServerCommandService.svc"
       
       session = Session()
       if self.user_domain == "BASIC":
@@ -177,14 +189,19 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
         url = "http://" + url
         session.auth = HttpNtlmAuth(self.user_domain + "\\" + self.user_id, self.user_pw)
 
-      self.client = Client(url, transport=Transport(session=session))
+      self.client = Client(url + "?wsdl", transport=Transport(session=session))
       self.instance_id = str(uuid.uuid4())
+
+      if self.force_management_address:
+        self.service = self.client.create_service("{http://tempuri.org/}BasicHttpBinding_IServerCommandService", url)
+      else:
+        self.service = self.client.service
       
-      login = self.client.service.Login(instanceId=self.instance_id)
+      login = self.service.Login(instanceId=self.instance_id)
       self.login_token = login.Token
       self.renew_time = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
 
-      config = self.client.service.GetConfiguration(token=login.Token)
+      config = self.service.GetConfiguration(token=login.Token)
       recorder_url = None
       for recorder in config.Recorders.RecorderInfo:
         for camera in recorder.Cameras.CameraInfo:
@@ -220,7 +237,7 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
 
     # TODO: Do renewal logic
     def renew_token(self):
-      login = self.client.service.Login(instanceId=self.instance_id, currentToken=self.login_token)
+      login = self.service.Login(instanceId=self.instance_id, currentToken=self.login_token)
       self.login_token = login.Token
       self.renew_time = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
       self.socket.sendall(bytes(self.xmlGenerator.connect_update(), 'UTF-8'))
