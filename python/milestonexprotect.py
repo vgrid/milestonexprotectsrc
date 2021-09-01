@@ -144,6 +144,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         self.force_management_address: bool = False
 
         self.set_live(True)
+        self.set_do_timestamp(True)
         self.started = False
 
     def do_get_property(self, prop):

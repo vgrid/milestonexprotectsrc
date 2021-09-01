@@ -286,6 +286,10 @@ static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * p
   GST_TRACE_OBJECT(gst_xprotect_debug, "FROM Sync ts no: %" PRIu64 "\n", gbd->GetSyncTimeStamp());
   GST_TRACE_OBJECT(gst_xprotect_debug, "FROM ts no: %" PRIu64 "\n", gbd->GetTimeStamp());
 
+  GST_BUFFER_DTS(outputBuffer) = GST_BUFFER_DTS(buf);
+  GST_BUFFER_PTS(outputBuffer) = GST_BUFFER_PTS(buf);
+  GST_BUFFER_OFFSET(outputBuffer) = GST_BUFFER_OFFSET(buf);
+
   // Theoretically, we can just modify the buffer in-place
   // TODO: Look into this
   memcpy(info2.data, gbd->GetBody(), gbd->GetBodyLength());
