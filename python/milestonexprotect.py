@@ -26,7 +26,7 @@ class Buffer:
 
   def get_line(self):
     buf = self.get_buffer()
-    return buf.decode().strip()
+    return buf if buf is None else buf.decode().strip()
 
   def get_buffer(self):
     while b'\r\n\r\n' not in self.buffer:
@@ -256,6 +256,9 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
 
       while True:
         response = self.buffer.get_line()
+        # Socket closed, return with an EOS
+        if response is None:
+          return Gst.FlowReturn.EOS
         try:
           if response.startswith("ImageResponse"):
             lines = response.splitlines()
