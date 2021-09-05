@@ -1,5 +1,6 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 import gi
+from pytz import UTC
 from requests import auth, Session
 from requests_ntlm import HttpNtlmAuth
 from socket import *
@@ -202,8 +203,8 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         self.service = self.client.service
       
       login = self.service.Login(instanceId=self.instance_id)
-      self.login_token = login.Token
-      self.renew_time = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
+      self.login_token: str = login.Token
+      self.renew_time: datetime = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
 
       config = self.service.GetConfiguration(token=login.Token)
       recorder_url = None
@@ -239,11 +240,10 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
 
       return True
 
-    # TODO: Do renewal logic
     def renew_token(self):
       login = self.service.Login(instanceId=self.instance_id, currentToken=self.login_token)
       self.login_token = login.Token
-      self.renew_time = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
+      self.renew_time: datetime = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
       self.socket.sendall(bytes(self.xmlGenerator.connect_update(), 'UTF-8'))
       self.socket.sendall(b'\r\n\r\n')
 
@@ -255,6 +255,9 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         self.started = True
 
       while True:
+        if self.renew_time < datetime.now(UTC):
+          self.renew_token()
+
         response = self.buffer.get_line()
         # Socket closed, return with an EOS
         if response is None:
@@ -274,7 +277,30 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
             return (Gst.FlowReturn.OK, buf)
 
           elif response.startswith("<?xml"):
-            continue
+            try:
+              root = ET.fromstring(response)
+              if root.tag == 'livepackage':
+                continue
+
+              # this is a response to a connectupdate
+              if root.tag == 'methodresponse':
+                elem = root.find('methodname')
+                if elem is not None and elem.text == "connectupdate":
+                  elem = root.find("connected")
+                  if elem is not None and elem.text == 'yes':
+                    # Success on the connectupdate - just ignore
+                    continue
+                  else:
+                    # Error doing a connectupdate
+                    break
+
+                print ("Unknown methodresponse", response)
+                continue
+
+              print("[" + root.tag + "]")
+            except:
+              print("Error decoding XML", response)
+              break
 
           else:
             if response == "":
