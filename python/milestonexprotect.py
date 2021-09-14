@@ -27,7 +27,15 @@ class Buffer:
 
   def get_line(self):
     buf = self.get_buffer()
-    return buf if buf is None else buf.decode().strip()
+    if buf is None:
+      return buf
+
+    # If we can't decode, just try again
+    try:
+      decode = buf.decode().strip()
+      return decode
+    except:
+      return self.get_line()
 
   def get_buffer(self):
     while b'\r\n\r\n' not in self.buffer:
