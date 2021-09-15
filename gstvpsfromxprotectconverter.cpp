@@ -130,8 +130,7 @@ GST_STATIC_PAD_TEMPLATE(
 #define gst_fromxprotectconverter_parent_class parent_class
 G_DEFINE_TYPE(GstFromXprotectConverter, gst_fromxprotectconverter, GST_TYPE_BIN);
 
-static gboolean gst_fromxprotectconverter_sink_event(GstPad * pad, GstObject * parent, GstEvent * event);
-static gboolean gst_fromxprotectconverter_src_event(GstPad * pad, GstObject * parent, GstEvent * event);
+static gboolean gst_fromxprotectconverter_pad_event(GstPad * pad, GstObject * parent, GstEvent * event);
 static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * parent, GstBuffer * buf);
 
 /* GObject vmethod implementations */
@@ -179,7 +178,7 @@ static void gst_fromxprotectconverter_init(GstFromXprotectConverter * filter)
   }
   filter->sinkpad = gst_pad_new_from_static_template(&sink_factory, "sink");
   gst_pad_set_event_function(filter->sinkpad,
-    GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_sink_event));
+    GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_pad_event));
   gst_pad_set_chain_function(filter->sinkpad,
     GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_chain));
   // GST_PAD_SET_PROXY_CAPS(filter->sinkpad);
@@ -189,9 +188,9 @@ static void gst_fromxprotectconverter_init(GstFromXprotectConverter * filter)
   filter->firstrun = TRUE;
 }
 
-/* this function handles sink events */
+/* this function handles all pad events */
 static gboolean
-gst_fromxprotectconverter_sink_event(GstPad * pad, GstObject * parent, GstEvent * event)
+gst_fromxprotectconverter_pad_event(GstPad * pad, GstObject * parent, GstEvent * event)
 {
   GstFromXprotectConverter *filter;
   gboolean ret;
@@ -274,6 +273,9 @@ static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * p
     gst_pad_use_fixed_caps(filter->srcpad_video);
     gst_pad_set_active (filter->srcpad_video, TRUE);
     gst_element_add_pad(GST_ELEMENT(filter), filter->srcpad_video);
+
+    gst_pad_set_event_function(filter->srcpad_video,
+      GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_pad_event));
 
     // Send events to tell the rest of the pipeline we're configured and ready to go
     gst_pad_push_event (filter->srcpad_video, gst_event_new_stream_start ("src"));
