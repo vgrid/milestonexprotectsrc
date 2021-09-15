@@ -246,7 +246,7 @@ gst_fromxprotectconverter_sink_query(GstPad * pad, GstObject * parent, GstQuery 
       break;
     }
     default:
-      ret = gst_pad_query_default(pad, parent, query)
+      ret = gst_pad_query_default(pad, parent, query);
       break;
   }
 
