@@ -131,7 +131,7 @@ GST_STATIC_PAD_TEMPLATE(
 G_DEFINE_TYPE(GstFromXprotectConverter, gst_fromxprotectconverter, GST_TYPE_BIN);
 
 static gboolean gst_fromxprotectconverter_sink_event(GstPad * pad, GstObject * parent, GstEvent * event);
-static gboolean gst_fromxprotectconverter_sink_query(GstPad * pad, GstObject * parent, GstQuery * query);
+static gboolean gst_fromxprotectconverter_src_query(GstPad * pad, GstObject * parent, GstQuery * query);
 static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * parent, GstBuffer * buf);
 
 /* GObject vmethod implementations */
@@ -222,11 +222,11 @@ gst_fromxprotectconverter_sink_event(GstPad * pad, GstObject * parent, GstEvent 
 }
 
 static gboolean
-gst_fromxprotectconverter_sink_query(GstPad * pad, GstObject * parent, GstQuery * query)
+gst_fromxprotectconverter_src_query(GstPad * pad, GstObject * parent, GstQuery * query)
 {
   gboolean ret = FALSE;
 
-  GST_DEBUG ("Received %s query on sinkpad, %" GST_PTR_FORMAT,
+  GST_DEBUG ("Received %s query on srcpad, %" GST_PTR_FORMAT,
       GST_QUERY_TYPE_NAME (query), query);
 
   switch (GST_QUERY_TYPE (query)) {
@@ -301,8 +301,8 @@ static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * p
     gst_pad_set_active (filter->srcpad_video, TRUE);
     gst_element_add_pad(GST_ELEMENT(filter), filter->srcpad_video);
 
-    gst_pad_set_query_function(filter->sinkpad,
-      GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_sink_query));
+    gst_pad_set_query_function(filter->srcpad_video,
+      GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_src_query));
 
     // Send events to tell the rest of the pipeline we're configured and ready to go
     gst_pad_push_event (filter->srcpad_video, gst_event_new_stream_start ("src"));
