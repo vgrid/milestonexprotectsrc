@@ -130,7 +130,8 @@ GST_STATIC_PAD_TEMPLATE(
 #define gst_fromxprotectconverter_parent_class parent_class
 G_DEFINE_TYPE(GstFromXprotectConverter, gst_fromxprotectconverter, GST_TYPE_BIN);
 
-static gboolean gst_fromxprotectconverter_pad_event(GstPad * pad, GstObject * parent, GstEvent * event);
+static gboolean gst_fromxprotectconverter_sink_event(GstPad * pad, GstObject * parent, GstEvent * event);
+static gboolean gst_fromxprotectconverter_sink_query(GstPad * pad, GstObject * parent, GstQuery * query);
 static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * parent, GstBuffer * buf);
 
 /* GObject vmethod implementations */
@@ -178,7 +179,7 @@ static void gst_fromxprotectconverter_init(GstFromXprotectConverter * filter)
   }
   filter->sinkpad = gst_pad_new_from_static_template(&sink_factory, "sink");
   gst_pad_set_event_function(filter->sinkpad,
-    GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_pad_event));
+    GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_sink_event));
   gst_pad_set_chain_function(filter->sinkpad,
     GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_chain));
   // GST_PAD_SET_PROXY_CAPS(filter->sinkpad);
@@ -188,9 +189,9 @@ static void gst_fromxprotectconverter_init(GstFromXprotectConverter * filter)
   filter->firstrun = TRUE;
 }
 
-/* this function handles all pad events */
+/* this function handles sink events */
 static gboolean
-gst_fromxprotectconverter_pad_event(GstPad * pad, GstObject * parent, GstEvent * event)
+gst_fromxprotectconverter_sink_event(GstPad * pad, GstObject * parent, GstEvent * event)
 {
   GstFromXprotectConverter *filter;
   gboolean ret;
@@ -203,20 +204,13 @@ gst_fromxprotectconverter_pad_event(GstPad * pad, GstObject * parent, GstEvent *
   switch (GST_EVENT_TYPE(event)) {
   case GST_EVENT_CAPS:
   {
-    // GstCaps * caps;
+    GstCaps * caps;
 
-    // gst_event_parse_caps(event, &caps);
+    gst_event_parse_caps(event, &caps);
     /* do something with the caps */
 
     /* and forward */
     // ret = gst_pad_event_default(pad, parent, event);
-    gst_event_unref(event);
-    ret = TRUE;
-    break;
-  }
-  case GST_EVENT_RECONFIGURE:
-  {
-    gst_event_unref(event);
     ret = TRUE;
     break;
   }
@@ -226,6 +220,39 @@ gst_fromxprotectconverter_pad_event(GstPad * pad, GstObject * parent, GstEvent *
   }
   return ret;
 }
+
+static gboolean
+gst_fromxprotectconverter_sink_query(GstPad * pad, GstObject * parent, GstQuery * query)
+{
+  gboolean ret = FALSE;
+
+  GST_DEBUG ("Received %s query on sinkpad, %" GST_PTR_FORMAT,
+      GST_QUERY_TYPE_NAME (query), query);
+
+  switch (GST_QUERY_TYPE (query)) {
+    case GST_QUERY_ACCEPT_CAPS:
+    {
+      GstCaps *acceptable, *caps;
+
+      acceptable = gst_pad_get_pad_template_caps (pad);
+
+      gst_query_parse_accept_caps (query, &caps);
+
+      gst_query_set_accept_caps_result (query,
+          gst_caps_is_subset (caps, acceptable));
+
+      gst_caps_unref (acceptable);
+      ret = TRUE;
+      break;
+    }
+    default:
+      ret = gst_pad_query_default(pad, parent, query)
+      break;
+  }
+
+  return ret;
+}
+
 
 /* chain function
  * this function does the actual processing
@@ -274,8 +301,8 @@ static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * p
     gst_pad_set_active (filter->srcpad_video, TRUE);
     gst_element_add_pad(GST_ELEMENT(filter), filter->srcpad_video);
 
-    gst_pad_set_event_function(filter->srcpad_video,
-      GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_pad_event));
+    gst_pad_set_query_function(filter->sinkpad,
+      GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_src_query));
 
     // Send events to tell the rest of the pipeline we're configured and ready to go
     gst_pad_push_event (filter->srcpad_video, gst_event_new_stream_start ("src"));
