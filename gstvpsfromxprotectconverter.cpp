@@ -204,13 +204,20 @@ gst_fromxprotectconverter_sink_event(GstPad * pad, GstObject * parent, GstEvent 
   switch (GST_EVENT_TYPE(event)) {
   case GST_EVENT_CAPS:
   {
-    GstCaps * caps;
+    // GstCaps * caps;
 
-    gst_event_parse_caps(event, &caps);
+    // gst_event_parse_caps(event, &caps);
     /* do something with the caps */
 
     /* and forward */
     // ret = gst_pad_event_default(pad, parent, event);
+    gst_event_unref(event);
+    ret = TRUE;
+    break;
+  }
+  case GST_EVENT_RECONFIGURE:
+  {
+    gst_event_unref(event);
     ret = TRUE;
     break;
   }
