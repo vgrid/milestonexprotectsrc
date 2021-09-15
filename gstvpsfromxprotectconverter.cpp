@@ -302,7 +302,7 @@ static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * p
     gst_element_add_pad(GST_ELEMENT(filter), filter->srcpad_video);
 
     gst_pad_set_query_function(filter->sinkpad,
-      GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_src_query));
+      GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_sink_query));
 
     // Send events to tell the rest of the pipeline we're configured and ready to go
     gst_pad_push_event (filter->srcpad_video, gst_event_new_stream_start ("src"));
