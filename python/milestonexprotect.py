@@ -9,6 +9,7 @@ import uuid
 import urllib3
 import xml.etree.ElementTree as ET
 from zeep import Client
+from zeep.cache import SqliteCache
 from zeep.transports import Transport
 
 gi.require_version('Gst', '1.0')
@@ -202,14 +203,14 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         session.auth = HttpNtlmAuth(self.user_domain + "\\" + self.user_id, self.user_pw)
         binding_override_namespace = "{http://videoos.net/2/XProtectCSServerCommand}ServerCommandServiceSoap"
 
-      self.client = Client(url + "?wsdl", transport=Transport(session=session))
+      self.client = Client(url + "?wsdl", transport=Transport(cache=SqliteCache(), session=session))
       self.instance_id = str(uuid.uuid4())
 
       if self.force_management_address:
         self.service = self.client.create_service(binding_override_namespace, url)
       else:
         self.service = self.client.service
-      
+
       login = self.service.Login(instanceId=self.instance_id)
       self.login_token: str = login.Token
       self.renew_time: datetime = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
