@@ -27,7 +27,10 @@ class Buffer:
     self.buffer = b''
 
   def get_line(self):
-    buf = self.get_buffer()
+    try:
+      buf = self.get_buffer()
+    except:
+     raise
     if buf is None:
       return buf
 
@@ -40,16 +43,22 @@ class Buffer:
 
   def get_buffer(self):
     while b'\r\n\r\n' not in self.buffer:
-      data = self.sock.recv(1024)
+      try:
+        data = self.sock.recv(1024)
+      except:
+        raise
       if not data: # socket closed
         return None
       self.buffer += data
     buf,sep,self.buffer = self.buffer.partition(b'\r\n\r\n')
-    return buf 
+    return buf
 
-  def get_buffer_size(self, size: int):    
+  def get_buffer_size(self, size: int):
     while len(self.buffer) < size:
-      data = self.sock.recv(4096)
+      try:
+        data = self.sock.recv(4096)
+      except:
+        raise
       if not data: # socket closed
         return None
       self.buffer += data
@@ -136,6 +145,14 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
                  False,
                  GObject.ParamFlags.READWRITE
                 ),
+        "timeout": (float,
+                 "timeout",
+                 "Timeout in seconds to wait to connect or receive packets (0 disables timeout)",
+                 0.0,
+                 3.0,
+                 2.0,
+                 GObject.ParamFlags.READWRITE
+                ),
     }
 
     __gsttemplates__ = Gst.PadTemplate.new("src",
@@ -152,6 +169,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         self.user_pw: str = ""
         self.camera_id: str = ""
         self.force_management_address: bool = False
+        self.timeout: float = 2.0
 
         self.set_live(True)
         self.set_do_timestamp(True)
@@ -170,6 +188,8 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
             return self.camera_id
         elif prop.name == 'force-management-address':
             return self.force_management_address
+        elif prop.name == 'timeout':
+            return self.timeout
         else:
             raise AttributeError('unknown property %s' % prop.name)
 
@@ -186,6 +206,8 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
             self.camera_id = value
         elif prop.name == 'force-management-address':
             self.force_management_address = value
+        elif prop.name == 'timeout':
+            self.timeout = value
         else:
             raise AttributeError('unknown property %s' % prop.name)
 
@@ -232,11 +254,16 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       self.recorder_port = recorder_result.port
 
       self.socket = socket()
-      self.socket.connect((self.recorder_host, self.recorder_port))
+      try:
+        self.socket.connect((self.recorder_host, self.recorder_port))
+      except:
+        return False
+      if self.timeout != 0.0:
+        self.socket.settimeout(self.timeout)
 
       self.buffer = Buffer(self.socket)
       self.xmlGenerator = XmlGenerator(self.login_token, self.camera_id)
-      
+
       # Send the initial connect to make sure we're good to go
       self.socket.sendall(bytes(self.xmlGenerator.connect(), 'UTF-8'))
       self.socket.sendall(b'\r\n\r\n')
@@ -267,7 +294,10 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         if self.renew_time < datetime.now(UTC):
           self.renew_token()
 
-        response = self.buffer.get_line()
+        try:
+          response = self.buffer.get_line()
+        except:
+          return Gst.FlowReturn.EOS
         # Socket closed, return with an EOS
         if response is None:
           return Gst.FlowReturn.EOS
