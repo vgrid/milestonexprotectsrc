@@ -134,7 +134,15 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
                 ),
         "camera-id": (str,
                  "Camera ID",
-                 "Milestone GUID of the Camera object to stream",
+                 """Milestone GUID of the Camera object to stream.
+                 If this is supplied but the hardware-id isn't, this trawls through the whole Milestone configuration to find the hardware and associated recorder, 
+                 which could be slower on larger sites""",
+                 "",
+                 GObject.ParamFlags.READWRITE
+                ),
+        "hardware-id": (str,
+                 "Hardware ID",
+                 "Milestone GUID of the Hardware object to stream. If this is supplied then the cameraId must be supplied too",
                  "",
                  GObject.ParamFlags.READWRITE
                 ),
@@ -167,6 +175,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         self.user_domain: str = ""
         self.user_id: str = ""
         self.user_pw: str = ""
+        self.hardware_id: str = ""
         self.camera_id: str = ""
         self.force_management_address: bool = False
         self.timeout: float = 2.0
@@ -184,6 +193,8 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
             return self.user_id
         elif prop.name == 'user-pw':
             return self.user_pw
+        elif prop.name == 'hardware-id':
+            return self.hardware_id
         elif prop.name == 'camera-id':
             return self.camera_id
         elif prop.name == 'force-management-address':
@@ -202,6 +213,8 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
             self.user_id = value
         elif prop.name == 'user-pw':
             self.user_pw = value
+        elif prop.name == 'hardware-id':
+            self.hardware_id = value
         elif prop.name == 'camera-id':
             self.camera_id = value
         elif prop.name == 'force-management-address':
@@ -212,6 +225,9 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
             raise AttributeError('unknown property %s' % prop.name)
 
     def do_start (self):
+      if self.camera_id == "" and self.hardware_id != "":
+        return False
+
       session = Session()
       if self.user_domain == "BASIC":
         url = "https://" + self.management_server + "/ManagementServer/ServerCommandService.svc"
@@ -237,16 +253,39 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       self.login_token: str = login.Token
       self.renew_time: datetime = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
 
-      config = self.service.GetConfiguration(token=login.Token)
-      recorder_url = None
-      for recorder in config.Recorders.RecorderInfo:
-        for camera in recorder.Cameras.CameraInfo:
-          if camera.DeviceId.lower() == self.camera_id.lower():
-            recorder_url = recorder.WebServerUri
-            break
+      # Work out which way we should obtain the recorder configuration
+      # If we have the hardware ID, get it directly (and then set the camera-id if it was blank)
+      if self.hardware_id != "":
+        # array_of_guid = self.client.get_type('ns0:ArrayOfGuid')
+        hardware_ids = {"guid": [self.hardware_id]}
+        hardware_info = self.service.GetConfigurationHardware(login.Token, hardware_ids)
+        if len(hardware_info) < 1:
+          return False
 
-      if recorder_url is None:
-        return False
+        # Check the cameraId is mapped to the hardwareId
+        if self.camera_id != "":
+          if self.camera_id.lower() not in hardware_info[0].DeviceIds.guid:
+            return False
+
+        recorder_ids = {"guid": [hardware_info[0].RecorderId]}
+        recorder_info = self.service.GetConfigurationRecorders(login.Token, recorder_ids)
+        if len(recorder_info) < 1:
+          return False
+
+        recorder_url = recorder_info[0].WebServerUri
+
+      # Fallback to trawling through the whole configuration
+      else:
+        config = self.service.GetConfiguration(token=login.Token)
+        recorder_url = None
+        for recorder in config.Recorders.RecorderInfo:
+          for camera in recorder.Cameras.CameraInfo:
+            if camera.DeviceId.lower() == self.camera_id.lower():
+              recorder_url = recorder.WebServerUri
+              break
+
+        if recorder_url is None:
+          return False
 
       recorder_result = urlparse(recorder_url)
 
