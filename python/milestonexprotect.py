@@ -335,11 +335,13 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
 
         try:
           response = self.buffer.get_line()
-        except:
-          return Gst.FlowReturn.EOS
+        except Exception as inst:
+          Gst.error("Error getting data from recording server - %s" % type(inst).__name__)
+          return (Gst.FlowReturn.EOS, None)
         # Socket closed, return with an EOS
         if response is None:
-          return Gst.FlowReturn.EOS
+          Gst.error("Socket with recording server closed")
+          return (Gst.FlowReturn.EOS, None)
         try:
           if response.startswith("ImageResponse"):
             lines = response.splitlines()
@@ -350,6 +352,8 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
 
             size = int(headers["content-length"])
 
+            Gst.trace("ImageResponse received\n%s" % response)
+
             mbytes = self.buffer.get_buffer_size(size)
             buf = Gst.Buffer.new_wrapped(mbytes)
             return (Gst.FlowReturn.OK, buf)
@@ -358,6 +362,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
             try:
               root = ET.fromstring(response)
               if root.tag == 'livepackage':
+                Gst.debug("livepackage received\n%s" % response)
                 continue
 
               # this is a response to a connectupdate
@@ -372,29 +377,24 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
                     # Error doing a connectupdate
                     break
 
-                print ("Unknown methodresponse", response)
+                Gst.warning("Unknown methodresponse - %s" % response)
                 continue
 
-              print("[" + root.tag + "]")
             except:
-              print("Error decoding XML", response)
+              Gst.error("Unknown methodresponse - %s" % response)
               break
 
           else:
             if response == "":
               continue
 
-            print("Unknown data")
-            print (response)
+            Gst.warning("Unknown response %s" % str(response))
             continue
 
         except Exception as inst:
-          print("Hit an error")
-          print(response)
-          print (type(inst))
+          Gst.error("Unknown exception encountered - %s" % type(inst).__name__)
           break
 
-      print ("returning")
-      return Gst.FlowReturn.ERROR
+      return (Gst.FlowReturn.ERROR, None)
 
 __gstelementfactory__ = ("milestonexprotectsrc", Gst.Rank.NONE, MilestoneXprotectSrc)
