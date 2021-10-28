@@ -241,7 +241,12 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         session.auth = HttpNtlmAuth(self.user_domain + "\\" + self.user_id, self.user_pw)
         binding_override_namespace = "{http://videoos.net/2/XProtectCSServerCommand}ServerCommandServiceSoap"
 
-      self.client = Client(url + "?wsdl", transport=Transport(cache=SqliteCache(), session=session))
+      try:
+        Gst.info("Instantiating SOAP Client")
+        self.client = Client(url + "?wsdl", transport=Transport(cache=SqliteCache(), session=session))
+      except:
+        Gst.error("Error getting WSDL - check authentication?")
+        return False
       self.instance_id = str(uuid.uuid4())
 
       if self.force_management_address:
@@ -249,6 +254,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       else:
         self.service = self.client.service
 
+      Gst.info("Performing login")
       login = self.service.Login(instanceId=self.instance_id)
       self.login_token: str = login.Token
       self.renew_time: datetime = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
@@ -256,27 +262,30 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       # Work out which way we should obtain the recorder configuration
       # If we have the hardware ID, get it directly (and then set the camera-id if it was blank)
       if self.hardware_id != "":
+        Gst.info("Have a hardware ID, so getting harware config directly")
         # array_of_guid = self.client.get_type('ns0:ArrayOfGuid')
         hardware_ids = {"guid": [self.hardware_id]}
         hardware_info = self.service.GetConfigurationHardware(login.Token, hardware_ids)
         if len(hardware_info) < 1:
+          Gst.error("Hardware ID not found")
           return False
 
         # Check the cameraId is mapped to the hardwareId
         if self.camera_id != "":
           if self.camera_id.lower() not in hardware_info[0].DeviceIds.guid:
+            Gst.error("Camera ID supplied not found for that Hardware ID")
             return False
 
-        recorder_ids = {"guid": [hardware_info[0].RecorderId]}
-        recorder_info = self.service.GetConfigurationRecorders(login.Token, recorder_ids)
-        if len(recorder_info) < 1:
-          return False
+        Gst.info("Getting recording server information")
+        recorder_info = self.service.QueryRecorderInfo(login.Token, hardware_info[0].RecorderId)
 
-        recorder_url = recorder_info[0].WebServerUri
+        recorder_url = recorder_info.WebServerUri
 
       # Fallback to trawling through the whole configuration
       else:
+        Gst.info("No Hardware ID supplied, getting whole site configuration")
         config = self.service.GetConfiguration(token=login.Token)
+        Gst.info("Got site config")
         recorder_url = None
         for recorder in config.Recorders.RecorderInfo:
           for camera in recorder.Cameras.CameraInfo:
@@ -285,6 +294,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
               break
 
         if recorder_url is None:
+          Gst.error("Recorder for camera not found")
           return False
 
       recorder_result = urlparse(recorder_url)
@@ -294,6 +304,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
 
       self.socket = socket()
       try:
+        Gst.info("Connecting to recording server %s:%d" % (self.recorder_host, self.recorder_port))
         self.socket.connect((self.recorder_host, self.recorder_port))
       except:
         return False
@@ -311,11 +322,14 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       root = ET.fromstring(response)
       elem = root.find('connected')
       if elem is None or elem.text != 'yes':
+        Gst.error("Unable to connect to recording server")
         return False
 
+      Gst.info("Recording server connected")
       return True
 
     def renew_token(self):
+      Gst.info("Renewing token")
       login = self.service.Login(instanceId=self.instance_id, currentToken=self.login_token)
       self.login_token = login.Token
       self.renew_time: datetime = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
@@ -325,12 +339,14 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
     # This method is called by gstreamer to create a buffer
     def do_create(self, o, s):
       if self.started == False:
+        Gst.info("Sending start live command")
         self.socket.sendall(bytes(self.xmlGenerator.live(), 'UTF-8'))
         self.socket.sendall(b'\r\n\r\n')
         self.started = True
 
       while True:
         if self.renew_time < datetime.now(UTC):
+          Gst.info("Renewing token with management server")
           self.renew_token()
 
         try:
@@ -375,6 +391,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
                     continue
                   else:
                     # Error doing a connectupdate
+                    Gst.error("connectupdate failed %s" % response)
                     break
 
                 Gst.warning("Unknown methodresponse - %s" % response)
