@@ -303,13 +303,13 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       self.recorder_port = recorder_result.port
 
       self.socket = socket()
+      if self.timeout != 0.0:
+        self.socket.settimeout(self.timeout)
       try:
         Gst.info("Connecting to recording server %s:%d" % (self.recorder_host, self.recorder_port))
         self.socket.connect((self.recorder_host, self.recorder_port))
       except:
         return False
-      if self.timeout != 0.0:
-        self.socket.settimeout(self.timeout)
 
       self.buffer = Buffer(self.socket)
       self.xmlGenerator = XmlGenerator(self.login_token, self.camera_id)
