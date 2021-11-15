@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import gi
+from inspect import currentframe
 from pytz import UTC
 from requests import auth, Session
 from requests_ntlm import HttpNtlmAuth
@@ -20,6 +21,19 @@ from gi.repository import Gst, GLib, GObject, GstBase, GstAudio
 
 OCAPS = Gst.Caps.from_string (
         'application/x-genericbytedata-octet-stream')
+
+
+def element_message(element, domain, code, message, debug=None, message_type="error"):
+  cf = currentframe()
+  if cf and cf.f_back:
+    filename = cf.f_back.f_code.co_filename
+    function = cf.f_back.f_code.co_name
+    line = cf.f_back.f_lineno
+
+    if message_type == "error":
+      element.message_full(Gst.MessageType.ERROR, domain.quark(), code, message, debug, filename, function, line)
+    else:
+      element.message_full(Gst.MessageType.WARNING, domain.quark(), code, message, debug, filename, function, line)
 
 class Buffer:
   def __init__(self,sock):
@@ -245,7 +259,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         Gst.info("Instantiating SOAP Client")
         self.client = Client(url + "?wsdl", transport=Transport(cache=SqliteCache(), session=session))
       except:
-        Gst.error("Error getting WSDL - check authentication?")
+        element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Error getting WSDL - likely an authentication failure")
         return False
       self.instance_id = str(uuid.uuid4())
 
@@ -267,13 +281,13 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         hardware_ids = {"guid": [self.hardware_id]}
         hardware_info = self.service.GetConfigurationHardware(login.Token, hardware_ids)
         if len(hardware_info) < 1:
-          Gst.error("Hardware ID not found")
+          element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Hardware ID not found")
           return False
 
         # Check the cameraId is mapped to the hardwareId
         if self.camera_id != "":
           if self.camera_id.lower() not in hardware_info[0].DeviceIds.guid:
-            Gst.error("Camera ID supplied not found for that Hardware ID")
+            element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Camera ID supplied not found for that Hardware ID")
             return False
 
         Gst.info("Getting recording server information")
@@ -294,7 +308,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
               break
 
         if recorder_url is None:
-          Gst.error("Recorder for camera not found")
+          element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Recorder for camera not found")
           return False
 
       recorder_result = urlparse(recorder_url)
@@ -309,6 +323,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         Gst.info("Connecting to recording server %s:%d" % (self.recorder_host, self.recorder_port))
         self.socket.connect((self.recorder_host, self.recorder_port))
       except:
+        element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Unable to connect to recording server")
         return False
 
       self.buffer = Buffer(self.socket)
@@ -322,7 +337,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       root = ET.fromstring(response)
       elem = root.find('connected')
       if elem is None or elem.text != 'yes':
-        Gst.error("Unable to connect to recording server")
+        element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Unable to send start command to recording server")
         return False
 
       Gst.info("Recording server connected")
@@ -352,11 +367,11 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         try:
           response = self.buffer.get_line()
         except Exception as inst:
-          Gst.error("Error getting data from recording server - %s" % type(inst).__name__)
+          element_message(self, Gst.ResourceError, Gst.ResourceError.READ, "Error getting data from recording server")
           return (Gst.FlowReturn.EOS, None)
         # Socket closed, return with an EOS
         if response is None:
-          Gst.error("Socket with recording server closed")
+          element_message(self, Gst.ResourceError, Gst.ResourceError.READ, "Socket with recording server closed")
           return (Gst.FlowReturn.EOS, None)
         try:
           if response.startswith("ImageResponse"):
@@ -391,25 +406,31 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
                     continue
                   else:
                     # Error doing a connectupdate
-                    Gst.error("connectupdate failed %s" % response)
+                    message = "connectupdate failed %s" % response
+                    element_message(self, Gst.ResourceError, Gst.ResourceError.READ, message, response)
                     break
 
-                Gst.warning("Unknown methodresponse - %s" % response)
+                message = "Unknown methodresponse - %s" % response
+                element_message(self, Gst.ResourceError, Gst.ResourceError.READ, message, response, "warning")
                 continue
 
             except:
-              Gst.error("Unknown methodresponse - %s" % response)
+              message = "Error decoding XML - %s" % response
+              element_message(self, Gst.ResourceError, Gst.ResourceError.READ, message, response)
               break
 
           else:
             if response == "":
               continue
 
-            Gst.warning("Unknown response %s" % str(response))
+            message = "Unknown response %s" % str(response)
+            element_message(self, Gst.ResourceError, Gst.ResourceError.READ, message, response, "warning")
+
             continue
 
         except Exception as inst:
-          Gst.error("Unknown exception encountered - %s" % type(inst).__name__)
+          message = "Unknown exception encountered - %s" % type(inst).__name__
+          element_message(self, Gst.ResourceError, Gst.ResourceError.READ, message)
           break
 
       return (Gst.FlowReturn.ERROR, None)
