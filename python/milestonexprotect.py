@@ -280,7 +280,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         # array_of_guid = self.client.get_type('ns0:ArrayOfGuid')
         hardware_ids = {"guid": [self.hardware_id]}
         hardware_info = self.service.GetConfigurationHardware(login.Token, hardware_ids)
-        if len(hardware_info) < 1:
+        if hardware_info is None or len(hardware_info) < 1:
           element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Hardware ID not found")
           return False
 
@@ -333,7 +333,11 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       self.socket.sendall(bytes(self.xmlGenerator.connect(), 'UTF-8'))
       self.socket.sendall(b'\r\n\r\n')
 
-      response = self.buffer.get_line()
+      try:
+        response = self.buffer.get_line()
+      except:
+        element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Error getting initial connect response")
+        return False
       root = ET.fromstring(response)
       elem = root.find('connected')
       if elem is None or elem.text != 'yes':
@@ -344,12 +348,15 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       return True
 
     def renew_token(self):
-      Gst.info("Renewing token")
-      login = self.service.Login(instanceId=self.instance_id, currentToken=self.login_token)
-      self.login_token = login.Token
-      self.renew_time: datetime = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
-      self.socket.sendall(bytes(self.xmlGenerator.connect_update(), 'UTF-8'))
-      self.socket.sendall(b'\r\n\r\n')
+      try:
+        Gst.info("Renewing token")
+        login = self.service.Login(instanceId=self.instance_id, currentToken=self.login_token)
+        self.login_token = login.Token
+        self.renew_time: datetime = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
+        self.socket.sendall(bytes(self.xmlGenerator.connect_update(), 'UTF-8'))
+        self.socket.sendall(b'\r\n\r\n')
+      except:
+        raise
 
     # This method is called by gstreamer to create a buffer
     def do_create(self, o, s):
@@ -362,7 +369,11 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       while True:
         if self.renew_time < datetime.now(UTC):
           Gst.info("Renewing token with management server")
-          self.renew_token()
+          try:
+            self.renew_token()
+          except:
+            element_message(self, Gst.ResourceError, Gst.ResourceError.READ, "Error renewing token")
+            break
 
         try:
           response = self.buffer.get_line()
@@ -384,8 +395,11 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
             size = int(headers["content-length"])
 
             Gst.trace("ImageResponse received\n%s" % response)
-
-            mbytes = self.buffer.get_buffer_size(size)
+            try:
+              mbytes = self.buffer.get_buffer_size(size)
+            except:
+              element_message(self, Gst.ResourceError, Gst.ResourceError.READ, "Error getting buffer of fixed size")
+              break
             buf = Gst.Buffer.new_wrapped(mbytes)
             return (Gst.FlowReturn.OK, buf)
 
