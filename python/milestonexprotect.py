@@ -231,7 +231,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         if prop.name == 'management-server':
             self.management_server = value
         if prop.name == 'recorder-host':
-            self.management_server = value
+            self.recorder_host = value
         elif prop.name == 'user-domain':
             self.user_domain = value
         elif prop.name == 'user-id':
