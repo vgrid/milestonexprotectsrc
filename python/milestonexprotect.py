@@ -128,6 +128,12 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
                  "",
                  GObject.ParamFlags.READWRITE
                 ),
+        "recorder-host": (str,
+                 "Recorder Host",
+                 "IP Address of the Milestone XProtect Recorder server for this camera / hardware. Optional and can be left blank.",
+                 "",
+                 GObject.ParamFlags.READWRITE
+                ),
         "user-domain": (str,
                  "Domain",
                  "Domain to use to log in - if domain is set to BASIC, basic authentication against Milestone will be used",
