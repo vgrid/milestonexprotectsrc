@@ -186,6 +186,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         GstBase.BaseSrc.__init__(self)
 
         self.management_server: str = ""
+        self.recorder_host: str = ""
         self.user_domain: str = ""
         self.user_id: str = ""
         self.user_pw: str = ""
@@ -201,6 +202,8 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
     def do_get_property(self, prop):
         if prop.name == 'management-server':
             return self.management_server
+        if prop.name == 'recorder-host':
+            return self.recorder_host
         elif prop.name == 'user-domain':
             return self.user_domain
         elif prop.name == 'user-id':
@@ -220,6 +223,8 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
 
     def do_set_property(self, prop, value):
         if prop.name == 'management-server':
+            self.management_server = value
+        if prop.name == 'recorder-host':
             self.management_server = value
         elif prop.name == 'user-domain':
             self.user_domain = value
@@ -273,48 +278,52 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       self.login_token: str = login.Token
       self.renew_time: datetime = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
 
-      # Work out which way we should obtain the recorder configuration
-      # If we have the hardware ID, get it directly (and then set the camera-id if it was blank)
-      if self.hardware_id != "":
-        Gst.info("Have a hardware ID, so getting harware config directly")
-        # array_of_guid = self.client.get_type('ns0:ArrayOfGuid')
-        hardware_ids = {"guid": [self.hardware_id]}
-        hardware_info = self.service.GetConfigurationHardware(login.Token, hardware_ids)
-        if hardware_info is None or len(hardware_info) < 1:
-          element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Hardware ID not found")
-          return False
-
-        # Check the cameraId is mapped to the hardwareId
-        if self.camera_id != "":
-          if self.camera_id.lower() not in hardware_info[0].DeviceIds.guid:
-            element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Camera ID supplied not found for that Hardware ID")
+      # If we've got the recorder host set, just use that
+      if self.recorder_host != "":
+        self.recorder_port = 7563
+      else:
+        # Work out which way we should obtain the recorder configuration
+        # If we have the hardware ID, get it directly (and then set the camera-id if it was blank)
+        if self.hardware_id != "":
+          Gst.info("Have a hardware ID, so getting harware config directly")
+          # array_of_guid = self.client.get_type('ns0:ArrayOfGuid')
+          hardware_ids = {"guid": [self.hardware_id]}
+          hardware_info = self.service.GetConfigurationHardware(login.Token, hardware_ids)
+          if hardware_info is None or len(hardware_info) < 1:
+            element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Hardware ID not found")
             return False
 
-        Gst.info("Getting recording server information")
-        recorder_info = self.service.QueryRecorderInfo(login.Token, hardware_info[0].RecorderId)
+          # Check the cameraId is mapped to the hardwareId
+          if self.camera_id != "":
+            if self.camera_id.lower() not in hardware_info[0].DeviceIds.guid:
+              element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Camera ID supplied not found for that Hardware ID")
+              return False
 
-        recorder_url = recorder_info.WebServerUri
+          Gst.info("Getting recording server information")
+          recorder_info = self.service.QueryRecorderInfo(login.Token, hardware_info[0].RecorderId)
 
-      # Fallback to trawling through the whole configuration
-      else:
-        Gst.info("No Hardware ID supplied, getting whole site configuration")
-        config = self.service.GetConfiguration(token=login.Token)
-        Gst.info("Got site config")
-        recorder_url = None
-        for recorder in config.Recorders.RecorderInfo:
-          for camera in recorder.Cameras.CameraInfo:
-            if camera.DeviceId.lower() == self.camera_id.lower():
-              recorder_url = recorder.WebServerUri
-              break
+          recorder_url = recorder_info.WebServerUri
 
-        if recorder_url is None:
-          element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Recorder for camera not found")
-          return False
+        # Fallback to trawling through the whole configuration
+        else:
+          Gst.info("No Hardware ID supplied, getting whole site configuration")
+          config = self.service.GetConfiguration(token=login.Token)
+          Gst.info("Got site config")
+          recorder_url = None
+          for recorder in config.Recorders.RecorderInfo:
+            for camera in recorder.Cameras.CameraInfo:
+              if camera.DeviceId.lower() == self.camera_id.lower():
+                recorder_url = recorder.WebServerUri
+                break
 
-      recorder_result = urlparse(recorder_url)
+          if recorder_url is None:
+            element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Recorder for camera not found")
+            return False
 
-      self.recorder_host = recorder_result.hostname
-      self.recorder_port = recorder_result.port
+        recorder_result = urlparse(recorder_url)
+
+        self.recorder_host = recorder_result.hostname
+        self.recorder_port = recorder_result.port
 
       self.socket = socket()
       if self.timeout != 0.0:
