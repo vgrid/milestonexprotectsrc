@@ -130,7 +130,7 @@ class MilestoneXprotectSrc(GstBase.BaseSrc):
                 ),
         "recorder-host": (str,
                  "Recorder Host",
-                 "IP Address of the Milestone XProtect Recorder server for this camera / hardware. Optional and can be left blank.",
+                 "IP Address of the Milestone XProtect Recorder server for this camera / hardware. Only use this if you need to override the recorder that the management server would usually return (i.e for DNS lookups not working correctly)",
                  "",
                  GObject.ParamFlags.READWRITE
                 ),
@@ -208,7 +208,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
     def do_get_property(self, prop):
         if prop.name == 'management-server':
             return self.management_server
-        if prop.name == 'recorder-host':
+        elif prop.name == 'recorder-host':
             return self.recorder_host
         elif prop.name == 'user-domain':
             return self.user_domain
@@ -225,12 +225,12 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         elif prop.name == 'timeout':
             return self.timeout
         else:
-            raise AttributeError('unknown property %s' % prop.name)
+            raise AttributeError('Unable to get property %s' % prop.name)
 
     def do_set_property(self, prop, value):
         if prop.name == 'management-server':
             self.management_server = value
-        if prop.name == 'recorder-host':
+        elif prop.name == 'recorder-host':
             self.recorder_host = value
         elif prop.name == 'user-domain':
             self.user_domain = value
@@ -247,7 +247,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         elif prop.name == 'timeout':
             self.timeout = value
         else:
-            raise AttributeError('unknown property %s' % prop.name)
+            raise AttributeError('Unable to set property %s to %s' % (prop.name, value))
 
     def do_start (self):
       if self.camera_id == "" and self.hardware_id != "":
