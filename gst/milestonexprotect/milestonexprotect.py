@@ -15,9 +15,8 @@ from zeep.transports import Transport
 
 gi.require_version('Gst', '1.0')
 gi.require_version('GstBase', '1.0')
-gi.require_version('GstAudio', '1.0')
 
-from gi.repository import Gst, GLib, GObject, GstBase, GstAudio
+from gi.repository import Gst, GObject, GstBase
 
 OCAPS = Gst.Caps.from_string (
         'application/x-genericbytedata-octet-stream')

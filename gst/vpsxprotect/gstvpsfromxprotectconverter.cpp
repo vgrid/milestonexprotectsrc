@@ -96,42 +96,26 @@ enum
  *
  * describe the real formats here.
  */
-static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE("sink",
+static GstStaticPadTemplate sink_template = GST_STATIC_PAD_TEMPLATE("sink",
   GST_PAD_SINK,
   GST_PAD_ALWAYS,
   GST_STATIC_CAPS("application/x-genericbytedata-octet-stream")
 );
 
-static GstStaticPadTemplate src_video_factory_h264 = 
-GST_STATIC_PAD_TEMPLATE(
-  "src_h264",
-  GST_PAD_SRC,
-  GST_PAD_SOMETIMES,
-  GST_STATIC_CAPS ("video/x-h264")
-);
-
-static GstStaticPadTemplate src_video_factory_h265 = 
-GST_STATIC_PAD_TEMPLATE(
-  "src_h265",
-  GST_PAD_SRC,
-  GST_PAD_SOMETIMES,
-  GST_STATIC_CAPS ("video/x-h265")
-);
-
-static GstStaticPadTemplate src_video_factory_jpeg = 
-GST_STATIC_PAD_TEMPLATE(
-  "src_jpeg",
-  GST_PAD_SRC,
-  GST_PAD_SOMETIMES,
-  GST_STATIC_CAPS ("image/jpeg")
-);
+static GstStaticPadTemplate src_template =
+    GST_STATIC_PAD_TEMPLATE ("src",
+    GST_PAD_SRC,
+    GST_PAD_SOMETIMES,
+    GST_STATIC_CAPS ("video/x-h264; "
+        "video/x-h265; "
+        "image/jpeg;")
+    );
 
 
 #define gst_fromxprotectconverter_parent_class parent_class
 G_DEFINE_TYPE(GstFromXprotectConverter, gst_fromxprotectconverter, GST_TYPE_BIN);
 
 static gboolean gst_fromxprotectconverter_sink_event(GstPad * pad, GstObject * parent, GstEvent * event);
-static gboolean gst_fromxprotectconverter_src_event(GstPad * pad, GstObject * parent, GstEvent * event);
 static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * parent, GstBuffer * buf);
 
 /* GObject vmethod implementations */
@@ -142,10 +126,7 @@ gst_fromxprotectconverter_class_init(GstFromXprotectConverterClass * klass)
 {
   GST_DEBUG_CATEGORY_INIT(gst_xprotect_debug, "xprotect",
     0, "Template fromxprotectconverter");
-  GObjectClass *gobject_class;
   GstElementClass *gstelement_class;
-
-  gobject_class = (GObjectClass *)klass;
   gstelement_class = (GstElementClass *)klass;
 
   gst_element_class_set_details_simple(gstelement_class,
@@ -154,15 +135,11 @@ gst_fromxprotectconverter_class_init(GstFromXprotectConverterClass * klass)
     "Will remove a generic bytedata header from the frame.",
     "developer.milestonesys.com");
 
-  gst_element_class_add_pad_template(gstelement_class,
-    gst_static_pad_template_get(&src_video_factory_h264));
-  gst_element_class_add_pad_template(gstelement_class,
-    gst_static_pad_template_get(&src_video_factory_h265));
-  gst_element_class_add_pad_template(gstelement_class,
-    gst_static_pad_template_get(&src_video_factory_jpeg));
-
-  gst_element_class_add_pad_template(gstelement_class,
-    gst_static_pad_template_get(&sink_factory));
+  gst_element_class_add_static_pad_template(gstelement_class,
+    &sink_template);
+  
+  gst_element_class_add_static_pad_template(gstelement_class,
+    &src_template);
 }
 
 /* initialize the new element
@@ -177,7 +154,7 @@ static void gst_fromxprotectconverter_init(GstFromXprotectConverter * filter)
     GST_ERROR("Filter parameter was NULL.");
     return;
   }
-  filter->sinkpad = gst_pad_new_from_static_template(&sink_factory, "sink");
+  filter->sinkpad = gst_pad_new_from_static_template(&sink_template, "sink");
   gst_pad_set_event_function(filter->sinkpad,
     GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_sink_event));
   gst_pad_set_chain_function(filter->sinkpad,
@@ -234,6 +211,7 @@ gst_fromxprotectconverter_sink_event(GstPad * pad, GstObject * parent, GstEvent 
 static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * parent, GstBuffer * buf)
 {
   GstFromXprotectConverter *filter;
+  GstCaps *caps = NULL;
 
   filter = GST_FROMXPROTECTCONVERTER(parent);
 
@@ -251,18 +229,17 @@ static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * p
   }
 
   if (filter->firstrun) {
-    GstEvent *event;
     GstSegment segment;
 
     switch(gbd->GetCodec()) {
       case VpsUtilities::Codec::H264:
-        filter->srcpad_video = gst_pad_new_from_static_template(&src_video_factory_h264, "src_h264");
+        caps = gst_caps_new_empty_simple ("video/x-h264");
         break;
       case VpsUtilities::Codec::H265:
-        filter->srcpad_video = gst_pad_new_from_static_template(&src_video_factory_h265, "src_h265");
+        caps = gst_caps_new_empty_simple ("video/x-h265");
         break;
       case VpsUtilities::Codec::JPEG:
-        filter->srcpad_video = gst_pad_new_from_static_template(&src_video_factory_jpeg, "src_jpeg");
+        caps = gst_caps_new_empty_simple ("image/jpeg");
         break;
       default:
         gst_buffer_unmap(buf, &info);
@@ -271,7 +248,7 @@ static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * p
         return GST_FLOW_NOT_SUPPORTED;
     }
 
-    gst_pad_use_fixed_caps(filter->srcpad_video);
+    gst_pad_set_caps(filter->srcpad_video, caps);
     gst_pad_set_active (filter->srcpad_video, TRUE);
     gst_element_add_pad(GST_ELEMENT(filter), filter->srcpad_video);
 
@@ -281,6 +258,12 @@ static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * p
     gst_pad_push_event (filter->srcpad_video, gst_event_new_segment (&segment));
 
     filter->firstrun = FALSE;
+
+    GST_DEBUG_OBJECT (filter, "emitting no more pads");
+    gst_element_no_more_pads (GST_ELEMENT (filter));
+
+    if (caps)
+      gst_caps_unref (caps);
   }
 
   GstBuffer * outputBuffer = gst_buffer_new();
