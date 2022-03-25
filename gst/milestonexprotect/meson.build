@@ -20,11 +20,14 @@ endif
 
 
 # Install the required dependencies
-# run_command('pip3', 'install', '-r', join_paths(meson.current_source_dir(), 'requirements.txt'))
-meson.add_install_script('install_requirements.sh')
+if not get_option('install-python-requirements').disabled()
+  meson.add_install_script('install_requirements.sh')
+endif
+
+install_files = ['milestonexprotect.py', 'milestonexprotect_requirements.txt']
 
 install_data(
-    'milestonexprotect.py',
+    install_files,
     install_dir: join_paths(plugin_install_dir, 'python')
 )
 
