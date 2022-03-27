@@ -20,7 +20,7 @@ endif
 
 
 # Install the required dependencies
-if not get_option('install-python-requirements').disabled()
+if get_option('install-python-requirements')
   meson.add_install_script('install_requirements.sh')
 endif
 
