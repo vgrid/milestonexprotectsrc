@@ -154,6 +154,7 @@ static void gst_fromxprotectconverter_init(GstFromXprotectConverter * filter)
     GST_ERROR("Filter parameter was NULL.");
     return;
   }
+  filter->srcpad_video = gst_pad_new_from_static_template(&src_template, "src");
   filter->sinkpad = gst_pad_new_from_static_template(&sink_template, "sink");
   gst_pad_set_event_function(filter->sinkpad,
     GST_DEBUG_FUNCPTR(gst_fromxprotectconverter_sink_event));
@@ -253,7 +254,9 @@ static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * p
     gst_element_add_pad(GST_ELEMENT(filter), filter->srcpad_video);
 
     // Send events to tell the rest of the pipeline we're configured and ready to go
-    gst_pad_push_event (filter->srcpad_video, gst_event_new_stream_start ("src"));
+    GstEvent *stream_start = gst_event_new_stream_start ("src");
+    gst_event_set_group_id(stream_start, gst_util_group_id_next ());
+    gst_pad_push_event (filter->srcpad_video, stream_start);
     gst_segment_init (&segment, GST_FORMAT_BYTES);
     gst_pad_push_event (filter->srcpad_video, gst_event_new_segment (&segment));
 

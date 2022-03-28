@@ -23,4 +23,4 @@ gst_vpsxprotect_lib = library('gstvpsxprotect',
 
 # Define the library as an internal dependency to the current build
 vpsxprotect_dep = declare_dependency(link_with: gst_vpsxprotect_lib,
-  dependencies : [gst_app_dep, gstbase_dep])
+  dependencies : [glib_dep, gst_app_dep, gstbase_dep])

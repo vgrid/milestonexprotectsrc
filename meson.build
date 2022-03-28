@@ -21,6 +21,7 @@ gst_dep = dependency('gstreamer-1.0', version : gst_req,
   fallback : ['gstreamer', 'gst_dep'])
 gstbase_dep = dependency('gstreamer-base-1.0', version : gst_req,
   fallback : ['gstreamer', 'gst_base_dep'])
+glib_dep = dependency('glib-2.0')
 
 # Define compiler args and include directories
 gst_c_args = ['-DHAVE_CONFIG_H']
