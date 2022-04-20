@@ -4,17 +4,16 @@ gstreamer element to pull genericbytedata from Milestone XProtect. Requires the 
 
 ## Installation Instructions
 
-Clone the repository to desired location:
+Clone the repository to desired location, making sure that you have GStreamer, GStreamer Python Bindings, Python3 and meson/ninja installed (these will all be checked and fail if not):
 
-`git clone https://github.com/vgrid/milestonexprotectsrc`
+```
+git clone https://github.com/vgrid/milestonexprotectsrc
 
-Run (with `build-essential`, `libglib2.0-dev`, `liborc-0.4-dev`) make
+meson builddir
+meson compile -C builddir
+meson install -C builddir
+```
 
-`make && make install`
-
-By default, this will install the elements into `/usr/lib/gstreamer-1.0`. Python modules rely on this to work, so you'll need to:
-
-`export GST_PLUGIN_PATH=$GST_PLUGIN_PATH:/usr/lib/gstreamer-1.0`
 
 ## Usage
 

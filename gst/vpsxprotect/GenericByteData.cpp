@@ -185,7 +185,7 @@ namespace VpsUtilities
 
   void GenericByteData::FillHeaderWithZeroes()
   {
-    for (int i = 0; i < HEADER_LENGTH; i++)
+    for (unsigned int i = 0; i < HEADER_LENGTH; i++)
     {
       m_pData[i] = 0x00;
     }

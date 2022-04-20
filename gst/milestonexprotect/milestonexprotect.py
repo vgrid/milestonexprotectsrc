@@ -15,9 +15,8 @@ from zeep.transports import Transport
 
 gi.require_version('Gst', '1.0')
 gi.require_version('GstBase', '1.0')
-gi.require_version('GstAudio', '1.0')
 
-from gi.repository import Gst, GLib, GObject, GstBase, GstAudio
+from gi.repository import Gst, GObject, GstBase
 
 OCAPS = Gst.Caps.from_string (
         'application/x-genericbytedata-octet-stream')
@@ -360,6 +359,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         return False
 
       Gst.info("Recording server connected")
+
       return True
 
     def renew_token(self):
@@ -374,7 +374,8 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         raise
 
     # This method is called by gstreamer to create a buffer
-    def do_create(self, o, s):
+    # We don't use the args
+    def do_create(self, *args):
       if self.started == False:
         Gst.info("Sending start live command")
         self.socket.sendall(bytes(self.xmlGenerator.live(), 'UTF-8'))
