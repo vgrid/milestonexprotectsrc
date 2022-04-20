@@ -1,6 +1,7 @@
 project('milestonexprotectsrc', 'cpp',
   version : '1.0.0',
-  meson_version : '>= 0.50',)
+  meson_version : '>= 0.51'
+)
 
 gst_milestonexprotect_version = meson.project_version()
 version_arr = gst_milestonexprotect_version.split('.')
@@ -42,7 +43,7 @@ cc = meson.get_compiler('cpp')
 # Verify if the warning flags are available in the compiler
 # If the flags is availale for the compiler it wiil be used in all compiler
 # invocations with the exception of compile tests.
-warning_flags = [
+supported_warning_flags = cc.get_supported_arguments(
   '-Wmissing-declarations',
   '-Wmissing-prototypes',
   '-Wredundant-decls',
@@ -60,13 +61,9 @@ warning_flags = [
   '-Wdeclaration-after-statement',
   '-Wvla',
   '-Wpointer-arith',
-]
-foreach extra_arg : warning_flags
-  if cc.has_argument (extra_arg)
-    # Add flag to the compiler command line
-    add_project_arguments([extra_arg], language: 'cpp')
-  endif
-endforeach
+)
+
+add_project_arguments([supported_warning_flags], language: 'cpp')
 
 # Create an empty configuration object to set config.h information
 cdata = configuration_data()
