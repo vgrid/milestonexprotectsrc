@@ -5,6 +5,7 @@ from pytz import UTC
 from requests import auth, Session
 from requests_ntlm import HttpNtlmAuth
 from socket import *
+import ssl
 from urllib.parse import urlparse
 import uuid
 import urllib3
@@ -281,11 +282,12 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       Gst.info("Performing login")
       login = self.service.Login(instanceId=self.instance_id)
       self.login_token: str = login.Token
-      self.renew_time: datetime = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=60)
+      self.renew_time: datetime = login.RegistrationTime + timedelta(microseconds=login.TimeToLive.MicroSeconds) - timedelta(seconds=120)
 
       # If we've got the recorder host set, just use that
       if self.recorder_host != "":
         self.recorder_port = 7563
+        self.recorder_tls = False
       else:
         # Work out which way we should obtain the recorder configuration
         # If we have the hardware ID, get it directly (and then set the camera-id if it was blank)
@@ -327,14 +329,23 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
 
         recorder_result = urlparse(recorder_url)
 
+        self._recorder_tls = recorder_result.scheme == "https"
         self.recorder_host = recorder_result.hostname
         self.recorder_port = recorder_result.port
 
-      self.socket = socket()
+      plain_sock = socket()
+      if self._recorder_tls:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        self.socket = ssl.wrap_socket(plain_sock)
+      else:
+        self.socket = plain_sock
+
       if self.timeout != 0.0:
         self.socket.settimeout(self.timeout)
       try:
-        Gst.info("Connecting to recording server %s:%d" % (self.recorder_host, self.recorder_port))
+        Gst.info("Connecting to recording server (TLS: %s) %s:%d" % (self._recorder_tls, self.recorder_host, self.recorder_port))
         self.socket.connect((self.recorder_host, self.recorder_port))
       except:
         element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Unable to connect to recording server")
