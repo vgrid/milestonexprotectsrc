@@ -287,7 +287,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       # If we've got the recorder host set, just use that
       if self.recorder_host != "":
         self.recorder_port = 7563
-        self.recorder_tls = False
+        self._recorder_tls = False
       else:
         # Work out which way we should obtain the recorder configuration
         # If we have the hardware ID, get it directly (and then set the camera-id if it was blank)
