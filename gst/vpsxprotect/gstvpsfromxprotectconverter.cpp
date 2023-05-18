@@ -249,8 +249,9 @@ static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * p
         return GST_FLOW_NOT_SUPPORTED;
     }
 
-    gst_pad_set_caps(filter->srcpad_video, caps);
+    gst_pad_use_fixed_caps (filter->srcpad_video);
     gst_pad_set_active (filter->srcpad_video, TRUE);
+    gst_pad_set_caps(filter->srcpad_video, caps);
     gst_element_add_pad(GST_ELEMENT(filter), filter->srcpad_video);
 
     // Send events to tell the rest of the pipeline we're configured and ready to go
