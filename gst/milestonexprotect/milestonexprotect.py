@@ -3,6 +3,7 @@ import gi
 from inspect import currentframe
 from pytz import UTC
 from requests import auth, Session
+from requests.adapters import HTTPAdapter
 from requests_ntlm import HttpNtlmAuth
 from socket import *
 import ssl
@@ -23,6 +24,18 @@ OCAPS = Gst.Caps.from_string (
         'application/x-genericbytedata-octet-stream')
 
 
+# Global SSL context to use for requests library, and our own socket
+ssl_context = ssl._create_unverified_context()
+ssl_context.minimum_version = ssl.TLSVersion.TLSv1_1
+ssl_context.set_ciphers("DEFAULT:@SECLEVEL=0") # OpenSSL 3.0.1 moved TLS1.1 to SEC level 0
+
+# Class to take the SSL context and apply it for requests library
+class SSLAdapter(HTTPAdapter):
+  def init_poolmanager(self, *args, **kwargs):
+    kwargs["ssl_context"] = ssl_context
+    return super().init_poolmanager(*args, **kwargs)
+
+# Function to add a message to the element
 def element_message(element, domain, code, message, debug=None, message_type="error"):
   cf = currentframe()
   if cf and cf.f_back:
@@ -254,10 +267,11 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         return False
 
       session = Session()
+      session.mount("https://", SSLAdapter())
+      session.verify = False # Highly unlikely we'll trust the Milestone cert, so just ignore errors
       if self.user_domain == "BASIC":
         url = "https://" + self.management_server + "/ManagementServer/ServerCommandService.svc"
         session.auth = auth.HTTPBasicAuth(username=self.user_id, password=self.user_pw)
-        session.verify = False # Highly unlikely we'll trust the Milestone cert, so just ignore errors
         urllib3.disable_warnings()
         binding_override_namespace = "{http://tempuri.org/}BasicHttpBinding_IServerCommandService"
       else:
@@ -335,10 +349,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
 
       plain_sock = socket()
       if self._recorder_tls:
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        self.socket = ssl.wrap_socket(plain_sock)
+        self.socket = ssl_context.wrap_socket(plain_sock)
       else:
         self.socket = plain_sock
 
