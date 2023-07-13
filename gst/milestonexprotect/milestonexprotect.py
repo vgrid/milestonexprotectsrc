@@ -317,6 +317,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       session = Session()
       session.mount("https://", SSLAdapter())
       session.verify = False # Highly unlikely we'll trust the Milestone cert, so just ignore errors
+      urllib3.disable_warnings()
 
       # Try OAuth first
       oauth = get_oauth_token(self.management_server, self.user_domain, self.user_id, self.user_pw)
@@ -324,21 +325,20 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       if oauth is not None:
         Gst.info("Using OAuth token")
         session.headers.update({"Authorization": "Bearer " + oauth})
-        url = "https://" + self.management_server + "/ManagementServer/ServerCommandServiceOAuth.svc"
+        url = "https://" + self.management_server + "/ManagementServer/ServerCommandServiceOAuth.svc?singleWsdl"
       else:
         Gst.info("Using standard auth")
         if self.user_domain == "BASIC":
-          url = "https://" + self.management_server + "/ManagementServer/ServerCommandService.svc"
+          url = "https://" + self.management_server + "/ManagementServer/ServerCommandService.svc?wsdl"
           session.auth = auth.HTTPBasicAuth(username=self.user_id, password=self.user_pw)
-          urllib3.disable_warnings()
         else:
           # TODO: This endpoint is marked as deprecated, but testing against a 2020R3 release doesn't work with the new endpoint?
-          url = "http://" + self.management_server + "/ServerAPI/ServerCommandService.asmx"
+          url = "http://" + self.management_server + "/ServerAPI/ServerCommandService.asmx?wsdl"
           session.auth = HttpNtlmAuth(self.user_domain + "\\" + self.user_id, self.user_pw)
 
       try:
         Gst.info("Instantiating SOAP Client")
-        self.client = Client(url + "?wsdl", transport=Transport(cache=SqliteCache(), session=session))
+        self.client = Client(url, transport=Transport(cache=SqliteCache(), session=session))
       except:
         element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Error getting WSDL - likely an authentication failure")
         return False
