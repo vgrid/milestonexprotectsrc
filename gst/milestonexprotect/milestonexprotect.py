@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import gi
+import re
 from inspect import currentframe
 from pytz import UTC
 from requests import auth, Session
@@ -47,6 +48,53 @@ def element_message(element, domain, code, message, debug=None, message_type="er
       element.message_full(Gst.MessageType.ERROR, domain.quark(), code, message, debug, filename, function, line)
     else:
       element.message_full(Gst.MessageType.WARNING, domain.quark(), code, message, debug, filename, function, line)
+
+"""
+  Gets an OAuth token for the given hostname, domain, username and password
+"""
+def get_oauth_token(hostname: str, domain: str, username: str, password: str) -> str | None:
+  session = Session()
+  session.mount("https://", SSLAdapter())
+  session.verify = False # Highly unlikely we'll trust the Milestone cert, so just ignore errors
+
+  # Check Oauth supported
+  r = session.get("https://" + hostname + "/idp/.well-known/openid-configuration")
+  if r.status_code != 200:
+    return None
+
+  body = r.json()
+
+  if "server_version" not in body:
+    return None
+
+  # Check server version supports OAuth
+  matches = re.findall(r"(\d+)\.(\d+)\.(\d+)", body["server_version"])
+  if matches is None or int(matches[0][0]) < 21:
+      return None
+
+  token_endpoint = body["token_endpoint"]
+  data = {
+    "client_id": "GrantValidatorClient"
+  }
+
+  auth = None
+  if domain == "BASIC":
+    data.update({
+      "grant_type": "password",
+      "username": username,
+      "password": password
+    })
+  else:
+    data.update({
+      "grant_type": "windows_credentials",
+    })
+    auth = HttpNtlmAuth(domain + "\\" + username, password)
+
+  r = session.post(token_endpoint, auth=auth, data=data, headers={"Accept": "application/json"})
+  if r.status_code != 200:
+    return None
+
+  return r.json()["access_token"]
 
 class Buffer:
   def __init__(self,sock):
@@ -269,16 +317,24 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       session = Session()
       session.mount("https://", SSLAdapter())
       session.verify = False # Highly unlikely we'll trust the Milestone cert, so just ignore errors
-      if self.user_domain == "BASIC":
-        url = "https://" + self.management_server + "/ManagementServer/ServerCommandService.svc"
-        session.auth = auth.HTTPBasicAuth(username=self.user_id, password=self.user_pw)
-        urllib3.disable_warnings()
-        binding_override_namespace = "{http://tempuri.org/}BasicHttpBinding_IServerCommandService"
+
+      # Try OAuth first
+      oauth = get_oauth_token(self.management_server, self.user_domain, self.user_id, self.user_pw)
+
+      if oauth is not None:
+        Gst.info("Using OAuth token")
+        session.headers.update({"Authorization": "Bearer " + oauth})
+        url = "https://" + self.management_server + "/ManagementServer/ServerCommandServiceOAuth.svc"
       else:
-        # TODO: This endpoint is marked as deprecated, but testing against a 2020R3 release doesn't work with the new endpoint?
-        url = "http://" + self.management_server + "/ServerAPI/ServerCommandService.asmx"
-        session.auth = HttpNtlmAuth(self.user_domain + "\\" + self.user_id, self.user_pw)
-        binding_override_namespace = "{http://videoos.net/2/XProtectCSServerCommand}ServerCommandServiceSoap"
+        Gst.info("Using standard auth")
+        if self.user_domain == "BASIC":
+          url = "https://" + self.management_server + "/ManagementServer/ServerCommandService.svc"
+          session.auth = auth.HTTPBasicAuth(username=self.user_id, password=self.user_pw)
+          urllib3.disable_warnings()
+        else:
+          # TODO: This endpoint is marked as deprecated, but testing against a 2020R3 release doesn't work with the new endpoint?
+          url = "http://" + self.management_server + "/ServerAPI/ServerCommandService.asmx"
+          session.auth = HttpNtlmAuth(self.user_domain + "\\" + self.user_id, self.user_pw)
 
       try:
         Gst.info("Instantiating SOAP Client")
@@ -288,10 +344,12 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         return False
       self.instance_id = str(uuid.uuid4())
 
-      if self.force_management_address:
-        self.service = self.client.create_service(binding_override_namespace, url)
-      else:
-        self.service = self.client.service
+      if self.force_management_address and "address" in self.client.service._binding_options:
+        # Replace the hostname in the WSDL with the one we're using
+        parsed = urlparse(self.client.service._binding_options["address"])
+        self.client.service._binding_options["address"] = parsed._replace(netloc=self.management_server).geturl()
+
+      self.service = self.client.service
 
       Gst.info("Performing login")
       login = self.service.Login(instanceId=self.instance_id)
