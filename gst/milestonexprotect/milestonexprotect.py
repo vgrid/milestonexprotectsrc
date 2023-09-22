@@ -244,6 +244,10 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
                 ),
     }
 
+    __gsignals__ = {
+        'ptz': (GObject.SignalFlags.RUN_LAST | GObject.SignalFlags.ACTION, None, (Gst.Structure,))
+    }
+
     __gsttemplates__ = Gst.PadTemplate.new("src",
                                            Gst.PadDirection.SRC,
                                            Gst.PadPresence.ALWAYS,
@@ -265,6 +269,8 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         self.set_live(True)
         self.set_do_timestamp(True)
         self.started = False
+
+        self._recorder_service_client = None
 
     def do_get_property(self, prop):
         if prop.name == 'management-server':
@@ -382,7 +388,6 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
           recorder_info = self.service.QueryRecorderInfo(login.Token, hardware_info[0].RecorderId)
 
           recorder_url = recorder_info.WebServerUri
-
         # Fallback to trawling through the whole configuration
         else:
           Gst.info("No Hardware ID supplied, getting whole site configuration")
@@ -544,5 +549,106 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
           break
 
       return (Gst.FlowReturn.ERROR, None)
+
+    def do_ptz(self, data):
+      """
+        Virtual method called by GObject action signal to send a PTZ command
+        Establishes the service channel with the recorder if it hasn't already been done
+      """
+
+      if not self.started:
+        return
+
+      if data.get_name() != 'PTZCommand' or not data.has_field("x") or not data.has_field("y") or not data.has_field("z"):
+        return
+
+      x = data.get_value("x")
+      y = data.get_value("y")
+      z = data.get_value("z")
+
+      if self._recorder_service_client is None:
+        self._setup_recorder_service_client()
+
+      try:
+        Gst.info("Sending PTZ command")
+        # Build PTZ Args
+        if x == 0 and y == 0 and z == 0:
+          self._recorder_service_client.service.PTZMoveStop(token=self.login_token, deviceId=self.camera_id)
+          return
+
+        if x != 0 or y != 0:
+          pan = 0
+          tilt = 0
+
+          if x > 0:
+            pan = 1
+          elif x < 0:
+            pan = -1
+
+          if y > 0:
+            tilt = 1
+          elif y < 0:
+            tilt = -1
+
+          ptz_args = {
+            "movement": [
+              {"name": "pan", "value": pan},
+              {"name": "tilt", "value": tilt},
+            ],
+            "speed": [
+              {"name": "pan", "value": abs(x)},
+              {"name": "tilt", "value": abs(y)}
+            ],
+            "Normalized": False
+          }
+          self._recorder_service_client.service.PTZMoveStart(token=self.login_token, deviceId=self.camera_id, ptzArgs=ptz_args)
+          return
+
+        if z != 0:
+          zoom = 0
+          if z > 0:
+            zoom = 1
+          elif z < 0:
+            zoom = -1
+          ptz_args = {
+            "movement": [
+              {"name": "zoom", "value": zoom},
+            ],
+            "speed": [
+              {"name": "zoom", "value": abs(z)},
+            ],
+            "Normalized": False
+          }
+
+          self._recorder_service_client.service.PTZMoveStart(token=self.login_token, deviceId=self.camera_id, ptzArgs=ptz_args)
+      except Exception as e:
+        Gst.warning("Error sending PTZ command - %s" % str(e))
+        return
+
+    def _setup_recorder_service_client(self):
+      """
+        Sets up the SOAP client to talk to the recorder service
+      """
+
+      if self._recorder_service_client is not None:
+        return
+
+      session = Session()
+      session.mount("https://", SSLAdapter())
+      session.verify = False # Highly unlikely we'll trust the Milestone cert, so just ignore errors
+      urllib3.disable_warnings()
+
+      if self._recorder_tls:
+        url = "https://" + self.recorder_host + ":" + str(self.recorder_port) + "/RecorderCommandService/RecorderCommandService.asmx?wsdl"
+      else:
+        url = "http://" + self.recorder_host + ":" + str(self.recorder_port) + "/RecorderCommandService/RecorderCommandService.asmx?wsdl"
+
+      self._recorder_service_client = Client(url, transport=Transport(cache=SqliteCache(), session=session))
+      # We have to tell zeep to strip the ns0 prefix from the SOAP Envelope, otherwise Milestone doesn't decode it properly
+      for ns in self._recorder_service_client.namespaces:
+        if "videoos" in self._recorder_service_client.namespaces[ns]:
+          self._recorder_service_client.set_ns_prefix(None, self._recorder_service_client.namespaces[ns])
+          break
+
 
 __gstelementfactory__ = ("milestonexprotectsrc", Gst.Rank.NONE, MilestoneXprotectSrc)
