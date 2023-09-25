@@ -33,3 +33,10 @@ Example launch line:
 ## Misc Info
 
 `fromxprotectconverter` automatically detects the incoming video payload, and provides `SOMETIMES` caps to GStreamer. If you're using this programmatically, you'll have to listen to the `pad-added` event to get the pad that provides either `video/x-h264`, `video/x-h265` or `image/jpeg`
+
+## Action Signals
+
+### ptz
+If you emit a `ptz` signal to the element, with a `Gst.Structure` named `PTZCommand`, with values `x`, `y` and `z`, then the element will connect to the `RecorderCommandService` (SOAP) and send the PTZ command. These values should be -1 to 1. You also need to pass a `Gst.Promise` to this function, which will return with either nothing, or a struct named `PTZError`. The `code` is set to `0` when an unknown error occured, or `1` if the PTZ action was unable to be performed because there is another user with a higher priority already using PTZ.
+
+Send `x`, `y` and `z` set to 0 to stop the PTZ from moving
