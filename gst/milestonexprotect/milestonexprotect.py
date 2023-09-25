@@ -13,6 +13,7 @@ import uuid
 import urllib3
 import xml.etree.ElementTree as ET
 from zeep import Client
+from zeep.exceptions import Fault
 from zeep.cache import SqliteCache
 from zeep.transports import Transport
 
@@ -24,6 +25,18 @@ from gi.repository import Gst, GObject, GstBase
 OCAPS = Gst.Caps.from_string (
         'application/x-genericbytedata-octet-stream')
 
+
+def etree_to_dict(t):
+  """
+  Helper function to convert an XML element to a dict (for fault messages)
+  """
+  tree = {}
+  for child in t:
+    value = child.text
+    if value is None:
+      value = etree_to_dict(child)
+    tree[child.tag] = value
+  return tree
 
 # Global SSL context to use for requests library, and our own socket
 ssl_context = ssl._create_unverified_context()
@@ -245,7 +258,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
     }
 
     __gsignals__ = {
-        'ptz': (GObject.SignalFlags.RUN_LAST | GObject.SignalFlags.ACTION, None, (Gst.Structure,))
+        'ptz': (GObject.SignalFlags.RUN_LAST | GObject.SignalFlags.ACTION, None, (Gst.Structure,Gst.Promise))
     }
 
     __gsttemplates__ = Gst.PadTemplate.new("src",
@@ -550,13 +563,14 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
 
       return (Gst.FlowReturn.ERROR, None)
 
-    def do_ptz(self, data):
+    def do_ptz(self, data, promise: Gst.Promise):
       """
         Virtual method called by GObject action signal to send a PTZ command
         Establishes the service channel with the recorder if it hasn't already been done
       """
 
       if not self.started:
+        promise.reply(None)
         return
 
       if data.get_name() != 'PTZCommand' or not data.has_field("x") or not data.has_field("y") or not data.has_field("z"):
@@ -566,14 +580,16 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
       y = data.get_value("y")
       z = data.get_value("z")
 
-      if self._recorder_service_client is None:
-        self._setup_recorder_service_client()
 
       try:
+        if self._recorder_service_client is None:
+          self._setup_recorder_service_client()
+
         Gst.info("Sending PTZ command")
         # Build PTZ Args
         if x == 0 and y == 0 and z == 0:
           self._recorder_service_client.service.PTZMoveStop(token=self.login_token, deviceId=self.camera_id)
+          promise.reply(None)
           return
 
         if x != 0 or y != 0:
@@ -602,6 +618,7 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
             "Normalized": False
           }
           self._recorder_service_client.service.PTZMoveStart(token=self.login_token, deviceId=self.camera_id, ptzArgs=ptz_args)
+          promise.reply(None)
           return
 
         if z != 0:
@@ -621,8 +638,23 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
           }
 
           self._recorder_service_client.service.PTZMoveStart(token=self.login_token, deviceId=self.camera_id, ptzArgs=ptz_args)
+          promise.reply(None)
+          return
+      except Fault as fault:
+        Gst.warning("Error sending PTZ command (Zeep exception) - %s" % fault.message)
+        tree = etree_to_dict(fault.detail)
+        error_struct = Gst.Structure("PTZError")
+        if tree.get("ErrorNumber") == "40295" and tree.get("SubErrorNumber") == "20":
+          error_struct.set_value("code", 1)
+        else:
+          error_struct.set_value("code", 0)
+        promise.reply(error_struct)
+        return
+
       except Exception as e:
-        Gst.warning("Error sending PTZ command - %s" % str(e))
+        Gst.warning("Error sending PTZ command (Unknown Exception) - %s" % str(e))
+        error_struct = Gst.Structure("PTZError")
+        error_struct.set_value("code", 0)
         return
 
     def _setup_recorder_service_client(self):
