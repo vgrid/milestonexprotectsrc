@@ -16,6 +16,7 @@ from zeep import Client
 from zeep.exceptions import Fault
 from zeep.cache import SqliteCache
 from zeep.transports import Transport
+from zeep.wsdl import Document
 
 gi.require_version('Gst', '1.0')
 gi.require_version('GstBase', '1.0')
@@ -356,8 +357,20 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
           session.auth = HttpNtlmAuth(self.user_domain + "\\" + self.user_id, self.user_pw)
 
       try:
+        Gst.Info("Getting WSDL")
+        # WSDL is available over HTTP (without auth) but not HTTPS
+        wsdl = Document(url.replace("https:", "http:"), transport=Transport())
+      except:
+        try:
+          Gst.info("Getting WSDL (second attempt, with auth)")
+          wsdl = Document(url, transport=Transport(session=session))
+        except:
+          element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Error getting WSDL - likely an authentication failure")
+          return False
+
+      try:
         Gst.info("Instantiating SOAP Client")
-        self.client = Client(url, transport=Transport(cache=SqliteCache(), session=session))
+        self.client = Client(wsdl, transport=Transport(cache=SqliteCache(), session=session))
       except:
         element_message(self, Gst.CoreError, Gst.CoreError.STATE_CHANGE, "Error getting WSDL - likely an authentication failure")
         return False
