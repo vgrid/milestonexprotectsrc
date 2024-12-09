@@ -435,7 +435,10 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
           Gst.info("Got site config")
           recorder_url = None
           for recorder in config.Recorders.RecorderInfo:
-            for camera in recorder.Cameras.CameraInfo:
+            cameras = recorder.Cameras
+            if cameras is None or cameras.CameraInfo is None:
+              continue
+            for camera in cameras.CameraInfo:
               if camera.DeviceId.lower() == self.camera_id.lower():
                 recorder_url = recorder.WebServerUri
                 break
