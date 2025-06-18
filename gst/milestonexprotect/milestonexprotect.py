@@ -82,11 +82,8 @@ def get_oauth_token(hostname: str, domain: str, username: str, password: str) ->
     return None
 
   # Check server version supports OAuth
-  matches = re.findall(r"(\d+)\.(\d+)\.(\d+)", body["server_version"])
-  try:
-    if int(matches[0][0]) < 21:
-        return None
-  except:
+  matches = re.search(r"(?P<major>\d+)\.(?P<minor>\d+)(?:\.(\d+))?", body["server_version"])
+  if matches is None or int(matches.group("major")) < 21:
     return None
 
   token_endpoint = body["token_endpoint"]
