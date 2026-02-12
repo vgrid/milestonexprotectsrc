@@ -230,6 +230,12 @@ static GstFlowReturn gst_fromxprotectconverter_chain(GstPad * pad, GstObject * p
   GST_BUFFER_PTS(outputBuffer) = GST_BUFFER_PTS(buf);
   GST_BUFFER_OFFSET(outputBuffer) = GST_BUFFER_OFFSET(buf);
 
+  // Copy reference timestamp metadata if present
+  GstReferenceTimestampMeta *meta = gst_buffer_get_reference_timestamp_meta(buf, NULL);
+  if (meta) {
+    gst_buffer_add_reference_timestamp_meta(outputBuffer, meta->reference, meta->timestamp, meta->duration);
+  }
+
   // Theoretically, we can just modify the buffer in-place
   // TODO: Look into this
   memcpy(info2.data, gbd->GetBody(), gbd->GetBodyLength());
