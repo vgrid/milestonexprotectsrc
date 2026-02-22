@@ -256,6 +256,12 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
                  2.0,
                  GObject.ParamFlags.READWRITE
                 ),
+        "write-camera-timestamp": (bool,
+                 "Add camera timestamp metadata",
+                 "Apply timestamp from Milestone 'current' field as NTP time",
+                 False,
+                 GObject.ParamFlags.READWRITE
+                ),
     }
 
     __gsignals__ = {
@@ -279,10 +285,13 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
         self.camera_id: str = ""
         self.force_management_address: bool = False
         self.timeout: float = 2.0
+        self.write_camera_timestamp: bool = False
 
         self.set_live(True)
         self.set_do_timestamp(True)
         self.started = False
+
+        self.ntp_caps = None
 
         self._recorder_service_client = None
 
@@ -305,6 +314,8 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
             return self.force_management_address
         elif prop.name == 'timeout':
             return self.timeout
+        elif prop.name == 'write-camera-timestamp':
+            return self.write_camera_timestamp
         else:
             raise AttributeError('Unable to get property %s' % prop.name)
 
@@ -327,6 +338,8 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
             self.force_management_address = value
         elif prop.name == 'timeout':
             self.timeout = value
+        elif prop.name == 'write-camera-timestamp':
+            self.write_camera_timestamp = value
         else:
             raise AttributeError('Unable to set property %s to %s' % (prop.name, value))
 
@@ -542,6 +555,18 @@ This can help when servers return a different hostname (i.e DNS instead of an IP
               element_message(self, Gst.ResourceError, Gst.ResourceError.READ, "Error getting buffer of fixed size")
               break
             buf = Gst.Buffer.new_wrapped(mbytes)
+
+            if self.write_camera_timestamp and 'current' in headers:
+              try:
+                timestamp_ms = int(headers['current'])
+                timestamp_ns = timestamp_ms * 1000000
+
+                if self.ntp_caps is None:
+                  self.ntp_caps = Gst.Caps.from_string("timestamp/x-ntp")
+
+                buf.add_reference_timestamp_meta(self.ntp_caps, timestamp_ns, Gst.CLOCK_TIME_NONE)
+              except ValueError:
+                Gst.warning("Could not parse timestamp from 'current' header: %s" % headers['current'])
             return (Gst.FlowReturn.OK, buf)
 
           elif response.startswith("<?xml"):
